@@ -1,5 +1,6 @@
 export const environment = {
   production: true,
-  apiGatewayUrl: 'http://localhost:8080',
+  // Use same-origin routing in production; the reverse proxy must forward /api to the API Gateway.
+  apiGatewayUrl: '',
   defaultTenantCode: 'AURA_AYURVEDA',
 };
