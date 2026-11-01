@@ -1,56 +1,42 @@
 import { Injectable } from '@angular/core';
-import { Observable, of } from 'rxjs';
-import { delay } from 'rxjs/operators';
+import { HttpClient, HttpParams } from '@angular/common/http';
+import { Observable, map, of, shareReplay } from 'rxjs';
 import { Category } from '../models/category.model';
-import { MOCK_CATEGORIES } from '../../data/mock/categories.mock';
+import { environment } from '../../../environments/environment';
+import { TenantConfigStore } from '../config/tenant-config.store';
 
-@Injectable({
-  providedIn: 'root',
-})
+interface Envelope<T> { success?: boolean; data?: T; }
+interface CategoryDto { id: string; parentId?: string; name: string; slug: string; description?: string; icon?: string; displayOrder?: number; isActive?: boolean; isFeatured?: boolean; }
+@Injectable({ providedIn: 'root' })
 export class CategoryService {
-  private categories: Category[] = [...MOCK_CATEGORIES];
-
-  getCategories(): Observable<Category[]> {
-    return of(this.categories).pipe(delay(50));
+  private cache$?: Observable<Category[]>;
+  constructor(private http: HttpClient, private tenantConfig: TenantConfigStore) {}
+  private tenantId(): string {
+    const id = this.tenantConfig.tenant()?.id;
+    if (!id) throw new Error('Storefront tenant configuration is not loaded. Cannot request tenant-scoped categories.');
+    return id;
   }
-
-  getTopLevelCategories(): Observable<Category[]> {
-    const list = this.categories.filter((c) => !c.parentId && !c.parentCategoryId);
-    return of(list).pipe(delay(50));
+  private load(): Observable<Category[]> {
+    if (!this.cache$) {
+      const params = new HttpParams().set('tenantId', this.tenantId());
+      this.cache$ = this.http.get<Envelope<CategoryDto[]>>(`${environment.apiGatewayUrl}/api/v1/catalog/categories`, { params })
+        .pipe(map(r => (r.data || []).map(c => ({ id: c.id, name: c.name, slug: c.slug, description: c.description,
+          icon: c.icon, image: c.icon, imageUrl: c.icon, parentId: c.parentId, parentCategoryId: c.parentId,
+          isFeatured: !!c.isFeatured, order: c.displayOrder, status: c.isActive === false ? 'INACTIVE' as const : 'ACTIVE' as const }))),
+          shareReplay(1));
+    }
+    return this.cache$;
   }
-
+  getCategories(): Observable<Category[]> { return this.load(); }
+  getTopLevelCategories(): Observable<Category[]> { return this.load().pipe(map(list => list.filter(c => !c.parentId && !c.parentCategoryId))); }
   getCategoriesByDepartment(department: string): Observable<Category[]> {
-    const deptLower = department.toLowerCase();
-    const list = this.categories.filter(
-      (c) => c.department?.toLowerCase() === deptLower || c.name.toLowerCase() === deptLower
-    );
-    return of(list).pipe(delay(50));
+    return this.load().pipe(map(list => list.filter(c => c.name.toLowerCase() === department.toLowerCase())));
   }
-
   getSubcategories(parentCategoryId: string): Observable<Category[]> {
-    const list = this.categories.filter(
-      (c) => c.parentId === parentCategoryId || c.parentCategoryId === parentCategoryId
-    );
-    return of(list).pipe(delay(50));
+    return this.load().pipe(map(list => list.filter(c => c.parentId === parentCategoryId || c.parentCategoryId === parentCategoryId)));
   }
-
-  getCategoriesByGender(gender: 'MEN' | 'WOMEN' | 'KIDS' | 'UNISEX'): Observable<Category[]> {
-    const list = this.categories.filter((c) => c.gender === gender || c.gender === 'UNISEX');
-    return of(list).pipe(delay(50));
-  }
-
-  getCategoryById(id: string): Observable<Category | undefined> {
-    const cat = this.categories.find((c) => c.id === id);
-    return of(cat).pipe(delay(50));
-  }
-
-  getCategoryBySlug(slug: string): Observable<Category | undefined> {
-    const cat = this.categories.find((c) => c.slug === slug);
-    return of(cat).pipe(delay(50));
-  }
-
-  getFeaturedCategories(): Observable<Category[]> {
-    const featured = this.categories.filter((c) => c.isFeatured);
-    return of(featured).pipe(delay(50));
-  }
+  getCategoriesByGender(_gender: 'MEN' | 'WOMEN' | 'KIDS' | 'UNISEX'): Observable<Category[]> { return this.getTopLevelCategories(); }
+  getCategoryById(id: string): Observable<Category | undefined> { return this.load().pipe(map(list => list.find(c => c.id === id))); }
+  getCategoryBySlug(slug: string): Observable<Category | undefined> { return this.load().pipe(map(list => list.find(c => c.slug === slug))); }
+  getFeaturedCategories(): Observable<Category[]> { return this.load().pipe(map(list => list.filter(c => c.isFeatured))); }
 }
