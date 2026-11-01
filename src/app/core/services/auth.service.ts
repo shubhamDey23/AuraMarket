@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { Observable, of } from 'rxjs';
 import { tap, catchError } from 'rxjs/operators';
 import { AuthStore } from '../auth/auth.store';
-import { AuthRepositoryMock } from '../auth/auth.repository.mock';
+import { AuthRepositoryHttp } from '../auth/auth.repository.http';
 import {
   AuthUser,
   LoginCredentials,
@@ -21,7 +21,7 @@ import { MOCK_SELLERS } from '../../data/mock/sellers.mock';
 export class AuthService {
   constructor(
     public store: AuthStore,
-    private repository: AuthRepositoryMock
+    private repository: AuthRepositoryHttp
   ) {
     this.restoreSession();
   }
