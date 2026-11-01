@@ -1,25 +1,29 @@
 import { Injectable } from '@angular/core';
-import { Observable, of } from 'rxjs';
-import { delay } from 'rxjs/operators';
+import { HttpClient, HttpParams } from '@angular/common/http';
+import { Observable, map, shareReplay } from 'rxjs';
 import { Brand } from '../models/brand.model';
-import { MOCK_BRANDS } from '../../data/mock/brands.mock';
+import { environment } from '../../../environments/environment';
+import { TenantConfigStore } from '../config/tenant-config.store';
 
-@Injectable({
-  providedIn: 'root',
-})
+interface Envelope<T> { success?: boolean; data?: T; }
+interface BrandDto { id: string; name: string; slug: string; description?: string; logoUrl?: string; isActive?: boolean; isFeatured?: boolean; }
+@Injectable({ providedIn: 'root' })
 export class BrandService {
-  private brands = [...MOCK_BRANDS];
-
-  getBrands(): Observable<Brand[]> {
-    return of(this.brands).pipe(delay(100));
+  private brands$?: Observable<Brand[]>;
+  constructor(private http: HttpClient, private tenantConfig: TenantConfigStore) {}
+  private load(): Observable<Brand[]> {
+    if (!this.brands$) {
+      const tenantId = this.tenantConfig.tenant()?.id;
+      if (!tenantId) throw new Error('Storefront tenant configuration is not loaded. Cannot request tenant-scoped brands.');
+      const params = new HttpParams().set('tenantId', tenantId);
+      this.brands$ = this.http.get<Envelope<BrandDto[]>>(`${environment.apiGatewayUrl}/api/v1/catalog/brands`, { params })
+        .pipe(map(r => (r.data || []).map(b => ({ id: b.id, name: b.name, slug: b.slug, logoUrl: b.logoUrl || '', logo: b.logoUrl || '',
+          description: b.description || '', productCount: 0, isFeatured: !!b.isFeatured,
+          status: b.isActive === false ? 'INACTIVE' as const : 'ACTIVE' as const }))), shareReplay(1));
+    }
+    return this.brands$;
   }
-
-  getFeaturedBrands(): Observable<Brand[]> {
-    return of(this.brands.filter((b) => b.isFeatured)).pipe(delay(100));
-  }
-
-  getBrandById(id: string): Observable<Brand | undefined> {
-    const b = this.brands.find((brand) => brand.id === id);
-    return of(b).pipe(delay(80));
-  }
+  getBrands(): Observable<Brand[]> { return this.load(); }
+  getFeaturedBrands(): Observable<Brand[]> { return this.load().pipe(map(list => list.filter(b => b.isFeatured))); }
+  getBrandById(id: string): Observable<Brand | undefined> { return this.load().pipe(map(list => list.find(b => b.id === id))); }
 }
