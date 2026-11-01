@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, of, map, tap, catchError, throwError } from 'rxjs';
+import { Observable, of, map, tap, catchError, throwError, switchMap } from 'rxjs';
 import { AuthRepository } from './auth.repository';
 import { AuthUser, LoginCredentials, RegisterData, SellerRegisterData, GoogleAuthPayload, UserRole } from './auth.models';
 import { environment } from '../../../environments/environment';
@@ -44,8 +44,10 @@ export class AuthRepositoryHttp extends AuthRepository {
     return this.http.post<ApiEnvelope<ApiUser>>(`${this.baseUrl}/register`, {
       tenantCode: this.tenantResolver.resolveTenantCode(), email: data.email, password: data.password,
       firstName: data.firstName, lastName: data.lastName, phone: data.phone
-    }).pipe(map(r => { if (!r.data?.id) throw new Error(r.message || 'Registration response was incomplete.'); return { user: this.mapUser(r.data), token: '' }; }),
-      tap(({ user }) => { if (typeof localStorage !== 'undefined') localStorage.setItem(this.userKey, JSON.stringify(user)); }));
+    }).pipe(
+      map(r => { if (!r.data?.id) throw new Error(r.message || 'Registration response was incomplete.'); return r.data; }),
+      switchMap(() => this.login({ email: data.email, password: data.password }))
+    );
   }
   registerSeller(_data: SellerRegisterData): Observable<{ user: AuthUser; token: string }> {
     return throwError(() => new Error('Seller onboarding requires customer account registration followed by the seller onboarding API. That flow is not available in the current frontend form yet.'));
