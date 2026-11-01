@@ -37,11 +37,11 @@ export class AuthService {
 
   // Compatibility signals & computed getters for existing codebase
   currentSellerId(): string {
-    return this.store.sellerId() || 'seller-1';
+    return this.store.sellerId() || '';
   }
 
   currentCustomerId(): string {
-    return this.store.customerId() || 'cust-1';
+    return this.store.customerId() || '';
   }
 
   currentRole(): UserRole {
@@ -175,20 +175,8 @@ export class AuthService {
     return false;
   }
 
-  // Developer switch role method (retains fallback)
-  switchRole(role: UserRole): void {
-    const currentUser = this.store.currentUser();
-    if (currentUser) {
-      currentUser.role = role;
-      this.store.setUser({ ...currentUser }, this.store.token());
-    } else {
-      if (role === 'CUSTOMER') {
-        this.login({ email: 'customer@auramarket.demo' }, 'CUSTOMER').subscribe();
-      } else if (role === 'SELLER') {
-        this.login({ email: 'seller@auramarket.demo' }, 'SELLER').subscribe();
-      } else if (role === 'ADMIN') {
-        this.login({ email: 'admin@auramarket.demo' }, 'ADMIN').subscribe();
-      }
-    }
+  // Role switching is not an authentication mechanism. The server-issued role must remain authoritative.
+  switchRole(_role: UserRole): void {
+    this.store.setError('Role switching is disabled for API-backed sessions. Sign in with an account that has the required role.');
   }
 }
