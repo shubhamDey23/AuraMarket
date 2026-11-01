@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable, map } from 'rxjs';
+import { Observable, map, switchMap, of } from 'rxjs';
 import { Product, ProductStatus } from '../models/product.model';
 import { environment } from '../../../environments/environment';
 import { TenantConfigStore } from '../config/tenant-config.store';
@@ -140,13 +140,19 @@ export class ProductService {
       .pipe(map(r => this.mapProduct(r.data!)));
   }
   updateProduct(id: string, updatedData: Partial<Product>): Observable<Product | undefined> {
-    return this.http.put<ApiEnvelope<ProductDto>>(`${this.baseUrl}/seller/products/${encodeURIComponent(id)}`, { ...this.toDto(updatedData), tenantId: this.tenantId() })
+    const params = new HttpParams().set('tenantId', this.tenantId()).set('sellerId', updatedData.sellerId || '');
+    return this.http.put<ApiEnvelope<ProductDto>>(`${this.baseUrl}/seller/products/${encodeURIComponent(id)}`, this.toDto(updatedData), { params })
       .pipe(map(r => r.data ? this.mapProduct(r.data) : undefined));
   }
   toggleProductStatus(id: string): Observable<Product | undefined> {
-    const next = 'INACTIVE';
-    const params = new HttpParams().set('tenantId', this.tenantId()).set('status', next);
-    return this.http.patch<ApiEnvelope<ProductDto>>(`${this.baseUrl}/seller/products/${encodeURIComponent(id)}/status`, null, { params })
-      .pipe(map(r => r.data ? this.mapProduct(r.data) : undefined));
+    return this.getProductById(id).pipe(map(product => product ? { ...product, status: product.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE' } : undefined),
+      // Product status updates are sent through the seller update endpoint, which requires the owning seller ID.
+      // If the current seller ID is unavailable, the backend rejects the operation rather than using a mock identity.
+      switchMap(product => {
+        if (!product) return of(undefined);
+        const params = new HttpParams().set('tenantId', this.tenantId()).set('sellerId', product.sellerId);
+        return this.http.put<ApiEnvelope<ProductDto>>(`${this.baseUrl}/seller/products/${encodeURIComponent(id)}`,
+          this.toDto(product), { params }).pipe(map(r => r.data ? this.mapProduct(r.data) : undefined));
+      }));
   }
 }
